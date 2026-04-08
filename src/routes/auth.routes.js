@@ -346,4 +346,32 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+router.get('/profile/:email', async (req, res, next) => {
+  try {
+    const email = req.params.email?.toString().trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        name: user.name,
+        email: user.email,
+        roomNumber: user.roomNumber,
+        monthsLeft: user.monthsLeft,
+        rating: user.rating,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
