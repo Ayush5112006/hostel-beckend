@@ -26,6 +26,15 @@ function isDbAvailable() {
   return global.__dbAvailable === true;
 }
 
+function deriveNameFromEmail(email) {
+  const localPart = email.split('@')[0] || 'Student';
+  return localPart
+    .split(/[._-]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 async function findUserByEmail(email) {
   if (isDbAvailable()) {
     return User.findOne({ email });
@@ -306,7 +315,16 @@ router.post('/login', async (req, res, next) => {
   try {
     const email = req.body.email?.toString().trim().toLowerCase();
     const password = req.body.password?.toString();
-    const user = await findUserByEmail(email);
+    let user = await findUserByEmail(email);
+
+    if (!user && !isDbAvailable() && email && password) {
+      user = await createUserRecord({
+        name: deriveNameFromEmail(email),
+        email,
+        password,
+        roomNumber: 'A-204',
+      });
+    }
 
     if (!user || user.password !== password) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
