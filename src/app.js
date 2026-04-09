@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/auth.routes');
+const adminRoutes = require('./routes/admin.routes');
 const bookingRoutes = require('./routes/booking.routes');
 const chatRoutes = require('./routes/chat.routes');
 const complaintsRoutes = require('./routes/complaints.routes');
@@ -49,6 +50,7 @@ function createApp() {
   });
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/admin', adminRoutes);
   app.use('/api/dashboard', dashboardRoutes);
   app.use('/api/chats', chatRoutes);
   app.use('/api/bookings', bookingRoutes);
