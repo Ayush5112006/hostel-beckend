@@ -6,98 +6,51 @@ const OtpCode = require('../models/OtpCode');
 
 const router = express.Router();
 const MAX_OTP_ATTEMPTS = 2;
-const fallbackUsers = new Map([
-  [
-    'ayush@example.com',
-    {
-      name: 'Ayush Patel',
-      email: 'ayush@example.com',
-      password: '12345678',
-      roomNumber: 'A-204',
-      monthsLeft: 6,
-      rating: 4.9,
-      role: 'student',
-    },
-  ],
-]);
-const fallbackOtps = new Map();
 
 function isDbAvailable() {
   return global.__dbAvailable === true;
 }
 
-function deriveNameFromEmail(email) {
-  const localPart = email.split('@')[0] || 'Student';
-  return localPart
-    .split(/[._-]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+function ensureDbAvailable() {
+  if (!isDbAvailable()) {
+    const error = new Error('Database unavailable. Please try again later.');
+    error.statusCode = 503;
+    throw error;
+  }
 }
 
 async function findUserByEmail(email) {
-  if (isDbAvailable()) {
-    return User.findOne({ email });
-  }
-  return fallbackUsers.get(email) ?? null;
+  ensureDbAvailable();
+  return User.findOne({ email });
 }
 
 async function createUserRecord(userData) {
-  if (isDbAvailable()) {
-    return User.create(userData);
-  }
-
-  const user = {
-    ...userData,
-    monthsLeft: 6,
-    rating: 4.9,
-    role: 'student',
-  };
-  fallbackUsers.set(user.email, user);
-  return user;
+  ensureDbAvailable();
+  return User.create(userData);
 }
 
 async function findOtpByEmail(email) {
-  if (isDbAvailable()) {
-    return OtpCode.findOne({ email });
-  }
-  return fallbackOtps.get(email) ?? null;
+  ensureDbAvailable();
+  return OtpCode.findOne({ email });
 }
 
 async function upsertOtpByEmail(email, otpHash, expireAt) {
-  if (isDbAvailable()) {
-    return OtpCode.findOneAndUpdate(
-      { email },
-      { email, otpHash, expireAt, failedAttempts: 0 },
-      { upsert: true, new: true }
-    );
-  }
-
-  const record = { email, otpHash, expireAt, failedAttempts: 0 };
-  fallbackOtps.set(email, record);
-  return record;
+  ensureDbAvailable();
+  return OtpCode.findOneAndUpdate(
+    { email },
+    { email, otpHash, expireAt, failedAttempts: 0 },
+    { upsert: true, new: true }
+  );
 }
 
 async function incrementOtpFailures(email) {
-  if (isDbAvailable()) {
-    return OtpCode.findOneAndUpdate({ email }, { $inc: { failedAttempts: 1 } }, { new: true });
-  }
-
-  const record = fallbackOtps.get(email);
-  if (!record) {
-    return null;
-  }
-  record.failedAttempts += 1;
-  fallbackOtps.set(email, record);
-  return record;
+  ensureDbAvailable();
+  return OtpCode.findOneAndUpdate({ email }, { $inc: { failedAttempts: 1 } }, { new: true });
 }
 
 async function deleteOtpByEmail(email) {
-  if (isDbAvailable()) {
-    await OtpCode.deleteOne({ email });
-    return;
-  }
-  fallbackOtps.delete(email);
+  ensureDbAvailable();
+  await OtpCode.deleteOne({ email });
 }
 
 function createOtp() {
@@ -242,14 +195,31 @@ router.post('/signup/send-otp', async (req, res, next) => {
 
 router.post('/signup', async (req, res, next) => {
   try {
+    const firstName = req.body.firstName?.toString().trim();
+    const middleName = req.body.middleName?.toString().trim() || '';
+    const lastName = req.body.lastName?.toString().trim();
     const name = req.body.name?.toString().trim();
     const email = req.body.email?.toString().trim().toLowerCase();
     const password = req.body.password?.toString();
     const roomNumber = req.body.roomNumber?.toString().trim() || 'A-204';
+    const collegeName = req.body.collegeName?.toString().trim();
+    const collegeYears = Number(req.body.collegeYears);
+    const age = Number(req.body.age);
+    const phone = req.body.phone?.toString().trim();
+    const parentPhone = req.body.parentPhone?.toString().trim();
+    const profileImageName = req.body.profileImageName?.toString().trim() || '';
     const otp = req.body.otp?.toString().trim();
 
-    if (!name || !email || !password || !otp) {
-      return res.status(400).json({ success: false, message: 'Name, email, password and OTP are required' });
+    if (!firstName || !lastName || !name || !email || !password || !roomNumber || !collegeName || !phone || !parentPhone || !otp) {
+      return res.status(400).json({ success: false, message: 'Signup fields are required' });
+    }
+
+    if (!Number.isFinite(collegeYears) || collegeYears < 1 || collegeYears > 10) {
+      return res.status(400).json({ success: false, message: 'Invalid college years' });
+    }
+
+    if (!Number.isFinite(age) || age < 15 || age > 100) {
+      return res.status(400).json({ success: false, message: 'Invalid age' });
     }
 
     const existingUser = await findUserByEmail(email);
@@ -290,9 +260,18 @@ router.post('/signup', async (req, res, next) => {
 
     const user = await createUserRecord({
       name,
+      firstName,
+      middleName,
+      lastName,
       email,
       password,
       roomNumber,
+      collegeName,
+      collegeYears,
+      age,
+      phone,
+      parentPhone,
+      profileImageName,
     });
 
     await deleteOtpByEmail(email);
@@ -302,8 +281,17 @@ router.post('/signup', async (req, res, next) => {
       message: 'Signup completed',
       user: {
         name: user.name,
+        firstName: user.firstName,
+        middleName: user.middleName,
+        lastName: user.lastName,
         email: user.email,
         roomNumber: user.roomNumber,
+        collegeName: user.collegeName,
+        collegeYears: user.collegeYears,
+        age: user.age,
+        phone: user.phone,
+        parentPhone: user.parentPhone,
+        profileImageName: user.profileImageName,
       },
     });
   } catch (error) {
@@ -315,16 +303,7 @@ router.post('/login', async (req, res, next) => {
   try {
     const email = req.body.email?.toString().trim().toLowerCase();
     const password = req.body.password?.toString();
-    let user = await findUserByEmail(email);
-
-    if (!user && !isDbAvailable() && email && password) {
-      user = await createUserRecord({
-        name: deriveNameFromEmail(email),
-        email,
-        password,
-        roomNumber: 'A-204',
-      });
-    }
+    const user = await findUserByEmail(email);
 
     if (!user || user.password !== password) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
@@ -334,8 +313,17 @@ router.post('/login', async (req, res, next) => {
       success: true,
       user: {
         name: user.name,
+        firstName: user.firstName,
+        middleName: user.middleName,
+        lastName: user.lastName,
         email: user.email,
         roomNumber: user.roomNumber,
+        collegeName: user.collegeName,
+        collegeYears: user.collegeYears,
+        age: user.age,
+        phone: user.phone,
+        parentPhone: user.parentPhone,
+        profileImageName: user.profileImageName,
         monthsLeft: user.monthsLeft,
         rating: user.rating,
         role: user.role,
@@ -362,8 +350,17 @@ router.get('/profile/:email', async (req, res, next) => {
       success: true,
       user: {
         name: user.name,
+        firstName: user.firstName,
+        middleName: user.middleName,
+        lastName: user.lastName,
         email: user.email,
         roomNumber: user.roomNumber,
+        collegeName: user.collegeName,
+        collegeYears: user.collegeYears,
+        age: user.age,
+        phone: user.phone,
+        parentPhone: user.parentPhone,
+        profileImageName: user.profileImageName,
         monthsLeft: user.monthsLeft,
         rating: user.rating,
         role: user.role,

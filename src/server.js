@@ -11,12 +11,14 @@ async function startServer() {
   try {
     try {
       await connectDB(MONGODB_URI);
-      await seedDefaults();
+      if (process.env.ENABLE_SEED === 'true') {
+        await seedDefaults();
+      }
       global.__dbAvailable = true;
       console.log('Database connected');
     } catch (dbError) {
       global.__dbAvailable = false;
-      console.warn(`Database connection failed, running in fallback mode: ${dbError.message}`);
+      console.warn(`Database connection failed: ${dbError.message}`);
     }
 
     const app = createApp();

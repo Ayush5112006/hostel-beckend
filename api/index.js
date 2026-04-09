@@ -18,7 +18,7 @@ async function init() {
     global.__dbAvailable = true;
   } catch (error) {
     global.__dbAvailable = false;
-    console.warn(`Database connection failed, running in fallback mode: ${error.message}`);
+    console.warn(`Database connection failed: ${error.message}`);
   }
 
   initialized = true;
