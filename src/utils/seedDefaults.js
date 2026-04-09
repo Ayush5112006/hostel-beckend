@@ -7,6 +7,7 @@ const Complaint = require('../models/Complaint');
 
 async function seedDefaults() {
   const userEmail = 'ayush@example.com';
+  const adminEmail = '24dcs139@charusat.edu.in';
 
   await User.findOneAndUpdate(
     { email: userEmail },
@@ -27,6 +28,29 @@ async function seedDefaults() {
       monthsLeft: 6,
       rating: 4.9,
       role: 'student',
+    },
+    { upsert: true, new: true }
+  );
+
+  await User.findOneAndUpdate(
+    { email: adminEmail },
+    {
+      name: 'Ayush',
+      firstName: 'Ayush',
+      middleName: '',
+      lastName: 'Admin',
+      email: adminEmail,
+      password: 'Ayush@0511',
+      roomNumber: 'Admin',
+      collegeName: 'CHARUSAT',
+      collegeYears: 4,
+      age: 24,
+      phone: '0000000000',
+      parentPhone: '0000000000',
+      profileImageName: '',
+      monthsLeft: 0,
+      rating: 5,
+      role: 'admin',
     },
     { upsert: true, new: true }
   );
