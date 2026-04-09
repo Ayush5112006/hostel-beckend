@@ -41,7 +41,7 @@ async function seedDefaults() {
       lastName: 'Admin',
       email: adminEmail,
       password: 'Ayush@0511',
-      roomNumber: 'Admin',
+      roomNumber: 'A-001',
       collegeName: 'CHARUSAT',
       collegeYears: 4,
       age: 24,
