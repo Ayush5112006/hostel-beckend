@@ -2,6 +2,12 @@ const express = require('express');
 const User = require('../models/User');
 const Complaint = require('../models/Complaint');
 const AdminPanelData = require('../models/AdminPanelData');
+const Payment = require('../models/Payment');
+const MessMenu = require('../models/MessMenu');
+const Attendance = require('../models/Attendance');
+const Notice = require('../models/Notice');
+const AuditLog = require('../models/AuditLog');
+const Setting = require('../models/Setting');
 
 const router = express.Router();
 
@@ -445,6 +451,109 @@ router.put('/panel-data', async (req, res, next) => {
       panelData: doc.data,
       updatedAt: doc.updatedAt,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// --- New Individual Module Routes --- //
+
+router.get('/payments', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const payments = await Payment.find({}).populate('user', 'name email roomNumber').sort({ createdAt: -1 });
+    res.json({ success: true, payments });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/mess-menu', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const menu = await MessMenu.findOne({ date: { $gte: today } }).sort({ date: 1 });
+    res.json({ success: true, menu });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/attendance', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const attendance = await Attendance.find({ date: { $gte: today } }).populate('user', 'name');
+    res.json({ success: true, attendance });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/notices', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const notices = await Notice.find({ isActive: true }).sort({ createdAt: -1 });
+    res.json({ success: true, notices });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/notices', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const notice = await Notice.create(req.body);
+    res.json({ success: true, notice });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/audit-logs', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const logs = await AuditLog.find({}).sort({ createdAt: -1 }).limit(50);
+    res.json({ success: true, logs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/broadcast', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    // Simulate sending broadcast
+    await AuditLog.create({
+      action: `Broadcast sent: ${req.body.title || 'Announcement'}`,
+      tag: 'Broadcast',
+    });
+    res.json({ success: true, message: 'Broadcast sent successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/settings', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const settings = await Setting.find({});
+    res.json({ success: true, settings });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/settings', async (req, res, next) => {
+  try {
+    ensureDbAvailable();
+    const updates = req.body.settings || [];
+    for (const s of updates) {
+      await Setting.findOneAndUpdate({ key: s.key }, { value: s.value }, { upsert: true });
+    }
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
