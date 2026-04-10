@@ -8,6 +8,7 @@ const Attendance = require('../models/Attendance');
 const Notice = require('../models/Notice');
 const AuditLog = require('../models/AuditLog');
 const Setting = require('../models/Setting');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 
@@ -241,25 +242,63 @@ router.get('/overview', async (req, res, next) => {
   try {
     ensureDbAvailable();
 
-    const [totalUsers, totalAdmins, totalStudents, totalIssues, openIssues, recentIssues] = await Promise.all([
-      User.countDocuments({}),
-      User.countDocuments({ role: 'admin' }),
-      User.countDocuments({ role: 'student' }),
-      Complaint.countDocuments({}),
-      Complaint.countDocuments({ status: { $nin: ['Resolved', 'Done'] } }),
-      Complaint.find({}).sort({ createdAt: -1 }).limit(8),
+    // Check cache first
+    const cacheKey = 'admin:overview';
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return res.json({
+        success: true,
+        ...cachedData,
+        fromCache: true,
+      });
+    }
+
+    // Use aggregation pipeline for better performance
+    const [metrics, recentIssues] = await Promise.all([
+      User.aggregate([
+        {
+          $facet: {
+            totalUsers: [{ $count: 'count' }],
+            totalAdmins: [{ $match: { role: 'admin' } }, { $count: 'count' }],
+            totalStudents: [{ $match: { role: 'student' } }, { $count: 'count' }],
+          },
+        },
+      ]),
+      Complaint.find({})
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .select('_id title status userEmail createdAt')
+        .lean(),
     ]);
+
+    const [issueMetrics] = await Promise.all([
+      Complaint.aggregate([
+        {
+          $facet: {
+            totalIssues: [{ $count: 'count' }],
+            openIssues: [{ $match: { status: { $nin: ['Resolved', 'Done'] } } }, { $count: 'count' }],
+          },
+        },
+      ]),
+    ]);
+
+    const responseData = {
+      metrics: {
+        totalUsers: metrics[0].totalUsers[0]?.count || 0,
+        totalAdmins: metrics[0].totalAdmins[0]?.count || 0,
+        totalStudents: metrics[0].totalStudents[0]?.count || 0,
+        totalIssues: issueMetrics[0].totalIssues[0]?.count || 0,
+        openIssues: issueMetrics[0].openIssues[0]?.count || 0,
+      },
+      recentIssues,
+    };
+
+    // Cache for 2 minutes
+    cache.set(cacheKey, responseData, 2 * 60 * 1000);
 
     res.json({
       success: true,
-      metrics: {
-        totalUsers,
-        totalAdmins,
-        totalStudents,
-        totalIssues,
-        openIssues,
-      },
-      recentIssues,
+      ...responseData,
     });
   } catch (error) {
     next(error);
@@ -269,8 +308,31 @@ router.get('/overview', async (req, res, next) => {
 router.get('/issues', async (req, res, next) => {
   try {
     ensureDbAvailable();
-    const issues = await Complaint.find({}).sort({ createdAt: -1 });
-    res.json({ success: true, issues });
+    
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const [issues, total] = await Promise.all([
+      Complaint.find({})
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('_id title status userEmail createdAt priority')
+        .lean(),
+      Complaint.countDocuments({}),
+    ]);
+
+    res.json({ 
+      success: true, 
+      issues, 
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -281,8 +343,34 @@ router.put('/issues/:id', async (req, res, next) => {
     ensureDbAvailable();
     const status = req.body.status?.toString().trim();
 
-    if (!status) {
-      return res.status(400).json({ success: false, message: 'Status is required' });
+    
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+    const role = req.query.role?.toLowerCase();
+
+    const query = role ? { role } : {};
+
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('_id name email roomNumber role phone createdAt')
+        .lean(),
+      User.countDocuments(query),
+    ]);
+
+    res.json({ 
+      success: true, 
+      users, 
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    success: false, message: 'Status is required' });
     }
 
     const issue = await Complaint.findByIdAndUpdate(
@@ -435,8 +523,31 @@ router.put('/panel-data', async (req, res, next) => {
       doc.data = {
         ...(doc.data || {}),
         ...panelData,
-      };
-    } else {
+    
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const [payments, total] = await Promise.all([
+      Payment.find({})
+        .populate('user', 'name email roomNumber')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Payment.countDocuments({}),
+    ]);
+
+    res.json({ 
+      success: true, 
+      payments, 
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+   
       return res.status(400).json({
         success: false,
         message: 'Provide either module+payload or panelData object.',
@@ -460,10 +571,34 @@ router.put('/panel-data', async (req, res, next) => {
 
 router.get('/payments', async (req, res, next) => {
   try {
-    ensureDbAvailable();
-    const payments = await Payment.find({}).populate('user', 'name email roomNumber').sort({ createdAt: -1 });
-    res.json({ success: true, payments });
-  } catch (error) {
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    const skip = (page - 1) * limit;
+
+    const [attendance, total] = await Promise.all([
+      Attendance.find({ date: { $gte: today } })
+        .populate('user', 'name email')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Attendance.countDocuments({ date: { $gte: today } }),
+    ]);
+
+    res.json({ 
+      success: true, 
+      attendance, 
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+   
     next(error);
   }
 });
@@ -471,8 +606,31 @@ router.get('/payments', async (req, res, next) => {
 router.get('/mess-menu', async (req, res, next) => {
   try {
     ensureDbAvailable();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 15);
+    const skip = (page - 1) * limit;
+
+    const [notices, total] = await Promise.all([
+      Notice.find({ isActive: true })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('_id title message priority isActive createdAt')
+        .lean(),
+      Notice.countDocuments({ isActive: true }),
+    ]);
+
+    res.json({ 
+      success: true, 
+      notices, 
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+   
     const menu = await MessMenu.findOne({ date: { $gte: today } }).sort({ date: 1 });
     res.json({ success: true, menu });
   } catch (error) {
