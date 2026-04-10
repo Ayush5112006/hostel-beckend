@@ -22,8 +22,16 @@ This backend is ready to deploy on Vercel.
 - Root: `/`
 - Health: `/api/health`
 - Auth: `/api/auth/*`
+- Admin: `/api/admin/*`
 - Chats: `/api/chats/*`
 - Bookings: `/api/bookings/*`
 - Complaints: `/api/complaints/*`
 - Dashboard: `/api/dashboard/*`
+
+## New admin panel data APIs
+
+- `GET /api/admin/panel-data` -> fetches MongoDB-backed data used by all admin modules.
+- `PUT /api/admin/panel-data` -> updates one module or multiple modules.
+	- Module update body: `{ "module": "analytics", "payload": { ... }, "updatedBy": "admin@hostel" }`
+	- Multi-module update body: `{ "panelData": { "analytics": { ... }, "notice": { ... } } }`
 # hostel-beckend
