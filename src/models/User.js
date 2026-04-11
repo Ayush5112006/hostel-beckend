@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema(
     profileImageName: { type: String, default: '' },
     monthsLeft: { type: Number, default: 6 },
     rating: { type: Number, default: 4.9 },
-    role: { type: String, enum: ['student', 'admin'], default: 'student', index: true },
+    role: { type: String, enum: ['student', 'admin', 'superadmin'], default: 'student', index: true },
   },
   { timestamps: true }
 );

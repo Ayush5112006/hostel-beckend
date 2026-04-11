@@ -45,9 +45,20 @@ function splitNameParts(name) {
   };
 }
 
+function normalizeRole(input) {
+  const raw = (input ?? '').toString().trim().toLowerCase().replaceAll(' ', '').replaceAll('-', '');
+  if (raw === 'superadmin') {
+    return 'superadmin';
+  }
+  if (raw === 'admin') {
+    return 'admin';
+  }
+  return 'student';
+}
+
 function buildDefaultPanelData(metrics, issues, users) {
   const students = users
-    .filter((user) => user.role !== 'admin')
+    .filter((user) => !['admin', 'superadmin'].includes((user.role || '').toString().toLowerCase()))
     .slice(0, 20)
     .map((user) => ({
       name: user.name,
@@ -207,7 +218,7 @@ function buildDefaultPanelData(metrics, issues, users) {
 async function getOrCreatePanelData() {
   const [totalUsers, totalAdmins, totalStudents, totalIssues, openIssues, issues, users] = await Promise.all([
     User.countDocuments({}),
-    User.countDocuments({ role: 'admin' }),
+    User.countDocuments({ role: { $in: ['admin', 'superadmin'] } }),
     User.countDocuments({ role: 'student' }),
     Complaint.countDocuments({}),
     Complaint.countDocuments({ status: { $nin: ['Resolved', 'Done'] } }),
@@ -243,7 +254,7 @@ router.get('/overview', async (req, res, next) => {
 
     const [totalUsers, totalAdmins, totalStudents, totalIssues, openIssues, recentIssues] = await Promise.all([
       User.countDocuments({}),
-      User.countDocuments({ role: 'admin' }),
+      User.countDocuments({ role: { $in: ['admin', 'superadmin'] } }),
       User.countDocuments({ role: 'student' }),
       Complaint.countDocuments({}),
       Complaint.countDocuments({ status: { $nin: ['Resolved', 'Done'] } }),
@@ -318,7 +329,7 @@ router.post('/users', async (req, res, next) => {
     const name = req.body.name?.toString().trim() || '';
     const email = req.body.email?.toString().trim().toLowerCase() || '';
     const password = req.body.password?.toString() || '';
-    const role = req.body.role?.toString().trim().toLowerCase() === 'admin' ? 'admin' : 'student';
+    const role = normalizeRole(req.body.role);
 
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Name, email and password are required' });
@@ -379,7 +390,7 @@ router.put('/users/:id', async (req, res, next) => {
     }
 
     if (req.body.role != null) {
-      updates.role = req.body.role.toString().trim().toLowerCase() === 'admin' ? 'admin' : 'student';
+      updates.role = normalizeRole(req.body.role);
     }
 
     if (req.body.phone != null) {
